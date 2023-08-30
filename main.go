@@ -121,7 +121,6 @@ func (s *SnapSubscriber) OnEvent(event any) {
 			// var path = fmt.Sprintf("tmp/%v.jpg", time.Now().UnixMicro())
 			var errOut util.Buffer
 			firstFrame := v.GetAnnexB()
-			// s.SetAnnexB(v)
 			s.bufferLocker.Lock()
 			s.lastPicBuffer.Reset()
 			cmd := exec.Command(conf.FFmpeg, "-hide_banner", "-i", "pipe:0", "-vframes", "1", "-f", "mjpeg", "pipe:1")
@@ -140,11 +139,9 @@ func (s *SnapSubscriber) OnEvent(event any) {
 			s.lastSnapTime = time.Now()
 			s.bufferLocker.Unlock()
 		}
-		if conf.Expire > 0 && time.Since(s.lastRequestTime) > conf.Expire {
-			s.StopSub()
-		}
 
 	default:
 		s.Subscriber.OnEvent(event)
 	}
+
 }
