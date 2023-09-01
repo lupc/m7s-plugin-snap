@@ -61,9 +61,9 @@ var subManager = &SubManager{}
 
 func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	streamPath := strings.TrimPrefix(r.URL.Path, "/")
-	if r.URL.RawQuery != "" {
-		streamPath += "?" + r.URL.RawQuery
-	}
+	// if r.URL.RawQuery != "" {
+	// 	streamPath += "?" + r.URL.RawQuery
+	// }
 	var q = r.URL.Query()
 	var expire, _ = strconv.Atoi(q.Get("expire")) //过期时长，请求时间减最后抓拍时间大于过期时长则等待下一个抓拍，毫秒
 	w.Header().Set("Content-Type", "image/jpeg")
@@ -117,27 +117,31 @@ func (s *SnapSubscriber) OnEvent(event any) {
 	switch v := event.(type) {
 	case VideoFrame:
 		if v.IFrame {
-			// s.Stop(zap.String("reason", "snap"))
-			// var path = fmt.Sprintf("tmp/%v.jpg", time.Now().UnixMicro())
-			var errOut util.Buffer
-			firstFrame := v.GetAnnexB()
-			s.bufferLocker.Lock()
-			s.lastPicBuffer.Reset()
-			cmd := exec.Command(conf.FFmpeg, "-hide_banner", "-i", "pipe:0", "-vframes", "1", "-f", "mjpeg", "pipe:1")
-			cmd.Stdin = &firstFrame
-			cmd.Stderr = &errOut
-			cmd.Stdout = &s.lastPicBuffer
-			cmd.Run()
 
-			if errOut.CanRead() {
-				s.Debug(string(errOut))
-			}
-			if s.lastSnapTime.IsZero() {
-				log.Debugf("%v首次抓拍ffmpeg完成", s.StreamPath)
-				s.snapComplete <- true
-			}
-			s.lastSnapTime = time.Now()
-			s.bufferLocker.Unlock()
+			go func() {
+				// s.Stop(zap.String("reason", "snap"))
+				// var path = fmt.Sprintf("tmp/%v.jpg", time.Now().UnixMicro())
+				var errOut util.Buffer
+				firstFrame := v.GetAnnexB()
+				s.bufferLocker.Lock()
+				s.lastPicBuffer.Reset()
+				cmd := exec.Command(conf.FFmpeg, "-hide_banner", "-i", "pipe:0", "-vframes", "1", "-f", "mjpeg", "pipe:1")
+				cmd.Stdin = &firstFrame
+				cmd.Stderr = &errOut
+				cmd.Stdout = &s.lastPicBuffer
+				cmd.Run()
+
+				if errOut.CanRead() {
+					s.Debug(string(errOut))
+				}
+				if s.lastSnapTime.IsZero() {
+					log.Debugf("%v首次抓拍ffmpeg完成", s.StreamPath)
+					s.snapComplete <- true
+				}
+				s.lastSnapTime = time.Now()
+				s.bufferLocker.Unlock()
+			}()
+
 		}
 
 	default:
