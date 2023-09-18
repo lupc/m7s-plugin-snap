@@ -105,7 +105,7 @@ func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if ok {
 		sub.bufferLocker.RLock()
-		log.Debugf("最后抓拍图片：%v", sub.lastPicBuffer.Len())
+		log.Debugf("最后抓拍图片长度：%v", sub.lastPicBuffer.Len())
 		w.Write(sub.lastPicBuffer.Bytes()) //返回最后抓拍的图片
 		sub.bufferLocker.RUnlock()
 	} else {
