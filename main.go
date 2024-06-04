@@ -33,8 +33,8 @@ type SnapSubscriber struct {
 
 func (s *SnapSubscriber) StopSub() {
 	s.Stop(zap.String("reason", "snap"))
-	s.snapComplete = nil
-	subManager.Remove(s.StreamPath)
+	// s.snapComplete = nil
+	GetSubManager().Remove(s.StreamPath)
 }
 
 type SnapConfig struct {
@@ -57,17 +57,29 @@ var conf = &SnapConfig{
 }
 
 var plugin = InstallPlugin(conf)
-var subManager = &SubManager{}
 
 func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		err := recover()
+		if err != nil {
+			plugin.Logger.Error("visit snap err", zap.Error(err.(error)))
+			http.Error(w, "抓拍失败！", http.StatusBadRequest)
+		}
+	}()
+
 	streamPath := strings.TrimPrefix(r.URL.Path, "/")
 	// if r.URL.RawQuery != "" {
 	// 	streamPath += "?" + r.URL.RawQuery
 	// }
 	var q = r.URL.Query()
-	var expire, _ = strconv.Atoi(q.Get("expire")) //过期时长，请求时间减最后抓拍时间大于过期时长则等待下一个抓拍，毫秒
+	var expire, err = strconv.Atoi(q.Get("expire")) //过期时长，请求时间减最后抓拍时间大于过期时长则等待下一个抓拍，毫秒
+	if err != nil {
+		expire = 1000
+	}
 	w.Header().Set("Content-Type", "image/jpeg")
-	sub := subManager.GetOrCreate(streamPath)
+	// plugin.Logger.Info("try snap", zap.Any("path", streamPath), zap.Any("expire", expire))
+	// defer plugin.Logger.Info("end snap", zap.Any("path", streamPath), zap.Any("expire", expire))
+	sub := GetSubManager().GetOrCreate(streamPath)
 	var reqTime = time.Now()
 	sub.lastRequestTime = reqTime
 	// sub.ID = r.RemoteAddr
@@ -111,6 +123,7 @@ func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "抓拍失败！", http.StatusBadRequest)
 	}
+
 }
 
 func (s *SnapSubscriber) OnEvent(event any) {
@@ -119,11 +132,21 @@ func (s *SnapSubscriber) OnEvent(event any) {
 		if v.IFrame {
 
 			go func() {
+				defer func() {
+					err := recover() //内置函数，可以捕捉到函数异常
+					if err != nil {
+						//这里是打印错误，还可以进行报警处理，例如微信，邮箱通知
+						plugin.Logger.Sugar().Errorf("抓拍出错（协程）：%v", err)
+					}
+				}()
+
 				// s.Stop(zap.String("reason", "snap"))
 				// var path = fmt.Sprintf("tmp/%v.jpg", time.Now().UnixMicro())
 				var errOut util.Buffer
 				firstFrame := v.GetAnnexB()
 				s.bufferLocker.Lock()
+				defer s.bufferLocker.Unlock()
+
 				s.lastPicBuffer.Reset()
 				cmd := exec.Command(conf.FFmpeg, "-hide_banner", "-i", "pipe:0", "-vframes", "1", "-f", "mjpeg", "pipe:1")
 				cmd.Stdin = &firstFrame
@@ -136,10 +159,12 @@ func (s *SnapSubscriber) OnEvent(event any) {
 				}
 				if s.lastSnapTime.IsZero() {
 					log.Debugf("%v首次抓拍ffmpeg完成", s.StreamPath)
-					s.snapComplete <- true
+					if s.snapComplete != nil {
+						s.snapComplete <- true
+					}
 				}
 				s.lastSnapTime = time.Now()
-				s.bufferLocker.Unlock()
+
 			}()
 
 		}
