@@ -74,7 +74,7 @@ func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var q = r.URL.Query()
 	var expire, err = strconv.Atoi(q.Get("expire")) //过期时长，请求时间减最后抓拍时间大于过期时长则等待下一个抓拍，毫秒
 	if err != nil {
-		expire = 1000
+		expire = 0
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
 	// plugin.Logger.Info("try snap", zap.Any("path", streamPath), zap.Any("expire", expire))
@@ -104,7 +104,7 @@ func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("%v首次抓拍http完成", sub.StreamPath)
 	}
 
-	if expire > 0 && reqTime.Sub(sub.lastSnapTime).Milliseconds() > int64(expire) {
+	if reqTime.Sub(sub.lastSnapTime).Milliseconds() > int64(expire) {
 		//等待下一个抓拍完成
 		for {
 			if sub.lastSnapTime.After(reqTime) {
@@ -117,7 +117,7 @@ func (snap *SnapConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if ok {
 		sub.bufferLocker.RLock()
-		log.Debugf("最后抓拍图片长度：%v", sub.lastPicBuffer.Len())
+		log.Debug("抓拍完成", zap.Any("imgSize", sub.lastPicBuffer.Len()), zap.Any("url", r.URL))
 		w.Write(sub.lastPicBuffer.Bytes()) //返回最后抓拍的图片
 		sub.bufferLocker.RUnlock()
 	} else {
